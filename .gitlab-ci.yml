@@ -1,0 +1,100 @@
+image: python:3.8.12
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+    - venv/
+
+before_script:
+  - python -V
+  - pip install virtualenv
+  - virtualenv venv
+  - source venv/bin/activate
+  - pip install poetry
+  - poetry install
+
+stages:
+  - Code Format Checking
+  - Import Order Checking
+  - Static Type Checking
+  - Code style Checking
+  - Doc Style Checking
+  - Package Develop Deployment
+  - Package QC Deployment
+  - Package UAT Deployment
+
+Black Checking:
+  stage: Code Format Checking
+  script:
+    - black --check .
+
+Isort Checking:
+  stage: Import Order Checking
+  script:
+    - isort --check .
+
+Mypy Checking:
+  stage: Static Type Checking
+  script:
+    - mypy .
+
+Flake8 Checking:
+  stage: Code style Checking
+  script:
+    - flake8
+
+Pydocstyle Checking:
+  stage: Doc Style Checking
+  script:
+    - pydocstyle
+
+Develop Deployment:
+  stage: Package Develop Deployment
+  script:
+    - python delta_lake_deployment/wheel_uninstallation.py
+    - dbfs rm --recursive dbfs:/dist
+    - poetry version $(date -u +%Y.%m.%d.%H.%M.%S)
+    - poetry build -f wheel
+    - dbfs cp -r --overwrite dist/ dbfs:/dist/
+    - python delta_lake_deployment/wheel_installation.py --wheel_name $(ls dist)
+  environment:
+    name: develop
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      changes:
+        - delta_lake_library/**/*
+
+QC Deployment:
+  stage: Package QC Deployment
+  script:
+    - python delta_lake_deployment/wheel_uninstallation.py
+    - dbfs rm --recursive dbfs:/dist
+    - poetry version $(date -u +%Y.%m.%d.%H.%M.%S)
+    - poetry build -f wheel
+    - dbfs cp -r --overwrite dist/ dbfs:/dist/
+    - python delta_lake_deployment/wheel_installation.py --wheel_name $(ls dist)
+  environment:
+    name: qc
+  rules:
+    - if: $CI_COMMIT_BRANCH == "qc"
+      changes:
+        - delta_lake_library/**/*
+
+UAT Deployment:
+  stage: Package UAT Deployment
+  script:
+    - python delta_lake_deployment/wheel_uninstallation.py
+    - dbfs rm --recursive dbfs:/dist
+    - poetry version $(date -u +%Y.%m.%d.%H.%M.%S)
+    - poetry build -f wheel
+    - dbfs cp -r --overwrite dist/ dbfs:/dist/
+    - python delta_lake_deployment/wheel_installation.py --wheel_name $(ls dist)
+  environment:
+    name: uat
+  rules:
+    - if: $CI_COMMIT_BRANCH == "uat"
+      changes:
+        - delta_lake_library/**/*
